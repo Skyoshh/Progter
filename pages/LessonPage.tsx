@@ -106,6 +106,12 @@ const LessonPage: React.FC = () => {
     }
     
     const handleStartQuiz = () => {
+         // Jika soal kosong (0 exercises), auto complete dengan skor 100 (bonus)
+        if (lessonData && lessonData.exercises.length === 0 && currentTopic) {
+             completeLesson(currentTopic.id, currentTopic.xp_reward, 100);
+             setStep(LessonStep.COMPLETE);
+             return;
+        }
         setStep(LessonStep.QUIZ);
     }
 
@@ -113,9 +119,17 @@ const LessonPage: React.FC = () => {
 
     const handleCheckAnswer = () => {
         if (!currentQuestion || selectedAnswer === null || !currentTopic) return;
-        const correct = selectedAnswer.trim().toLowerCase() === currentQuestion.jawaban_benar.toLowerCase();
-        setIsCorrect(correct);
-        if(correct) setCorrectAnswers(prev => prev + 1);
+        
+        // Cek jawaban
+        const isAnswerCorrect = selectedAnswer.trim().toLowerCase() === currentQuestion.jawaban_benar.toLowerCase();
+        
+        // Simpan state lokal untuk UI
+        setIsCorrect(isAnswerCorrect);
+        
+        // Hitung jumlah benar yang BARU (karena state correctAnswers belum update di siklus ini)
+        const newCorrectCount = isAnswerCorrect ? correctAnswers + 1 : correctAnswers;
+
+        if(isAnswerCorrect) setCorrectAnswers(prev => prev + 1);
 
         setTimeout(() => {
             setIsCorrect(null);
@@ -123,10 +137,25 @@ const LessonPage: React.FC = () => {
             if (lessonData && currentQuizIndex < lessonData.exercises.length - 1) {
                 setCurrentQuizIndex(prev => prev + 1);
             } else {
-                completeLesson(currentTopic.id, currentTopic.xp_reward);
+                // Kuis Selesai
+                const totalQuestions = lessonData.exercises.length;
+                // Hitung Skor (0 - 100)
+                const finalScore = totalQuestions > 0 
+                    ? Math.round((newCorrectCount / totalQuestions) * 100) 
+                    : 100;
+
+                completeLesson(currentTopic.id, currentTopic.xp_reward, finalScore);
                 setStep(LessonStep.COMPLETE);
             }
         }, 1500);
+    };
+
+    const handleForceComplete = () => {
+        if (currentTopic) {
+            // Force complete manual (biasanya karena soal kosong), beri nilai 100
+            completeLesson(currentTopic.id, currentTopic.xp_reward, 100);
+            setStep(LessonStep.COMPLETE);
+        }
     };
 
     if (!user) return <Navigate to="/auth" />;
@@ -135,9 +164,9 @@ const LessonPage: React.FC = () => {
     if (!lessonData || !currentTopic) return <div className="text-center p-8">Pelajaran tidak ditemukan.</div>;
 
     const progressPercentage = step === LessonStep.VOCABULARY 
-      ? (currentVocabIndex / lessonData.vocab.length) * 50
+      ? (currentVocabIndex / (lessonData.vocab.length || 1)) * 50
       : step === LessonStep.QUIZ
-      ? 50 + (currentQuizIndex / lessonData.exercises.length) * 50
+      ? 50 + (currentQuizIndex / (lessonData.exercises.length || 1)) * 50
       : step === LessonStep.COMPLETE
       ? 100
       : 50;
@@ -146,10 +175,15 @@ const LessonPage: React.FC = () => {
     const renderContent = () => {
         switch (step) {
             case LessonStep.VOCABULARY:
-                if (lessonData.vocab.length === 0) return <div>Tidak ada kosakata. <button onClick={handleStartQuiz}>Lanjut Kuis</button></div>
+                if (lessonData.vocab.length === 0) return (
+                    <div className="text-center">
+                        <p className="text-gray-800 font-bold mb-4">Tidak ada kosakata untuk topik ini.</p> 
+                        <button onClick={handleStartQuiz} className="text-blue-600 underline">Lanjut ke Kuis/Latihan</button>
+                    </div>
+                );
                 return (
                     <>
-                        <h2 className="text-2xl font-bold mb-6 text-center">Kosakata Baru</h2>
+                        <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Kosakata Baru</h2>
                         <VocabCard vocab={lessonData.vocab[currentVocabIndex]} targetLang={user.learning_language!} onPronounce={handlePronounce}/>
                         <button onClick={handleNextVocab} className="mt-8 w-full max-w-md bg-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-green-700 transition-colors">
                             Lanjut
@@ -159,8 +193,8 @@ const LessonPage: React.FC = () => {
             case LessonStep.AI_PRACTICE:
                 return (
                     <>
-                         <h2 className="text-2xl font-bold mb-4 text-center flex items-center justify-center gap-2"><LightbulbIcon className="w-8 h-8 text-yellow-500" /> Latihan dengan AI</h2>
-                         <p className="text-center text-gray-600 mb-6 max-w-lg">Gunakan kosakata yang baru kamu pelajari dalam kalimat baru yang dibuat oleh AI!</p>
+                         <h2 className="text-2xl font-bold mb-4 text-center flex items-center justify-center gap-2 text-gray-800"><LightbulbIcon className="w-8 h-8 text-yellow-500" /> Latihan dengan AI</h2>
+                         <p className="text-center text-gray-800 mb-6 max-w-lg">Gunakan kosakata yang baru kamu pelajari dalam kalimat baru yang dibuat oleh AI!</p>
                          <div className="space-y-4 w-full max-w-2xl">
                            {aiSentences.map((s, i) => (
                               <div key={i} className="bg-white p-4 rounded-lg shadow-sm border">
@@ -185,10 +219,29 @@ const LessonPage: React.FC = () => {
                 )
 
             case LessonStep.QUIZ:
-                if (!currentQuestion) return <div>Kuis selesai atau kosong.</div>;
+                // KONDISI JIKA LATIHAN KOSONG (DATABASE BELUM DIISI)
+                if (lessonData.exercises.length === 0) {
+                    return (
+                        <div className="text-center max-w-md p-6 bg-white rounded-2xl shadow-sm border">
+                            <h3 className="text-xl font-bold text-gray-800 mb-2">Latihan Kosong</h3>
+                            <p className="text-gray-600 mb-6">
+                                Belum ada soal latihan yang tersedia untuk topik ini di database.
+                            </p>
+                            <button 
+                                onClick={handleForceComplete}
+                                className="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-green-700 transition-colors"
+                            >
+                                Selesaikan Topik ({currentTopic?.xp_reward} XP)
+                            </button>
+                        </div>
+                    );
+                }
+
+                if (!currentQuestion) return <div className="text-gray-800 font-bold">Terjadi kesalahan memuat soal.</div>;
+                
                 return (
                     <div className="w-full max-w-2xl">
-                        <h2 className="text-2xl font-bold mb-4 text-center text-gray-700">{currentQuestion.pertanyaan}</h2>
+                        <h2 className="text-2xl font-bold mb-4 text-center text-gray-800">{currentQuestion.pertanyaan}</h2>
                         {currentQuestion.tipe_latihan === 'multiple-choice' ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {currentQuestion.opsi_jawaban.map(option => (
@@ -230,7 +283,8 @@ const LessonPage: React.FC = () => {
                         <CheckCircleIcon className="w-24 h-24 text-green-500 mx-auto mb-4"/>
                         <h2 className="text-3xl font-extrabold text-gray-800">Pelajaran Selesai!</h2>
                         <p className="text-xl text-gray-600 mt-2">Kamu mendapatkan {currentTopic?.xp_reward} XP!</p>
-                        <p className="text-lg mt-1">Benar: {correctAnswers} / {lessonData.exercises.length}</p>
+                        <p className="text-lg mt-1 font-bold text-gray-700">Skor: {lessonData.exercises.length > 0 ? Math.round((correctAnswers / lessonData.exercises.length) * 100) : 100}%</p>
+                        <p className="text-gray-500 mt-1">Benar: {correctAnswers} / {lessonData.exercises.length}</p>
                         <button onClick={() => navigate('/dashboard')} className="mt-8 bg-blue-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:bg-blue-700 transition-colors">
                             Kembali ke Dashboard
                         </button>

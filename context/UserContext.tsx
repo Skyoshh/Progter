@@ -9,7 +9,7 @@ interface UserContextType {
   error: string | null;
   refreshUser: () => Promise<void>;
   selectLanguage: (language: Language) => Promise<void>;
-  completeLesson: (lessonId: string, xp: number) => Promise<void>;
+  completeLesson: (lessonId: string, xp: number, score: number) => Promise<void>;
   resetProgress: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
   register: (name: string, email: string, password: string) => Promise<boolean>;
@@ -102,9 +102,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const completeLesson = async (lessonId: string, xp: number) => {
+  // Update: Menerima parameter score
+  const completeLesson = async (lessonId: string, xp: number, score: number) => {
     if (!user || !user.id) return;
-    await databaseService.saveLessonProgress(user.id, lessonId, 100);
+    // Mengirim skor dinamis ke database service
+    await databaseService.saveLessonProgress(user.id, lessonId, score);
     await databaseService.updateUserStats(user.id, xp);
     await refreshUser();
   };

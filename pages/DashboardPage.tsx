@@ -6,46 +6,62 @@ import { DBTopic, DBUserProgress } from '../types';
 import { CheckCircleIcon, StarIcon } from '../components/icons';
 import { databaseService } from '../services/database';
 
-const LessonNode: React.FC<{ lesson: DBTopic; isCompleted: boolean; isUnlocked: boolean; index: number }> = ({ lesson, isCompleted, isUnlocked, index }) => {
-  const positionClasses = [
-    'top-0 left-1/2 -translate-x-1/2',
-    'top-24 left-1/4',
-    'top-24 right-1/4',
-    'top-48 left-1/2 -translate-x-1/2',
-    'top-72 left-1/4',
-    'top-72 right-1/4'
-  ];
-  
-  const positionClass = positionClasses[index % positionClasses.length];
+// KONSTANTA LAYOUT
+const VERTICAL_SPACING = 140; // Jarak vertikal antar node
+const NODE_OFFSET_TOP = 48;   // Titik tengah vertikal lingkaran (Setengah dari h-24 / 96px = 48px)
+
+const LessonNode: React.FC<{ lesson: DBTopic; isCompleted: boolean; isUnlocked: boolean; index: number; total: number }> = ({ lesson, isCompleted, isUnlocked, index, total }) => {
+  // Logic untuk posisi zig-zag yang sinkron dengan SVG
+  const getPositionStyle = (i: number) => {
+    const cycle = i % 4;
+    let left = '50%'; // Center (Cycle 0 & 2)
+    if (cycle === 1) left = '25%'; // Kiri
+    if (cycle === 3) left = '75%'; // Kanan
+    
+    return { left, top: `${i * VERTICAL_SPACING}px` };
+  };
+
+  const style = getPositionStyle(index);
 
   const content = (
-    <div className={`absolute ${positionClass} flex flex-col items-center text-center w-24`}>
-        <div className={`relative w-24 h-24 flex items-center justify-center rounded-full border-4 transition-all duration-300
-          ${isCompleted ? 'bg-green-500 border-green-600' : ''}
-          ${isUnlocked && !isCompleted ? 'bg-blue-500 border-blue-600 animate-pulse' : ''}
-          ${!isUnlocked ? 'bg-gray-300 border-gray-400' : ''}
+    <div 
+      className={`absolute -translate-x-1/2 flex flex-col items-center text-center w-32 transition-all duration-500 z-10`}
+      style={style}
+    >
+        <div className={`relative w-24 h-24 flex items-center justify-center rounded-full border-b-8 active:border-b-0 active:translate-y-2 transition-all duration-200 shadow-lg bg-white
+          ${isCompleted ? 'bg-green-500 border-green-700' : ''}
+          ${isUnlocked && !isCompleted ? 'bg-green-500 border-green-700 animate-bounce-slow' : ''}
+          ${!isUnlocked ? 'bg-gray-200 border-gray-300' : ''}
         `}>
-          <div className="text-4xl">{lesson.icon}</div>
+          <div className="text-4xl drop-shadow-md select-none">{lesson.icon}</div>
+          
+          {/* Progress Ring / Checkmark */}
           {isCompleted && (
-            <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-0.5">
-              <CheckCircleIcon className="w-8 h-8 text-green-600" />
-            </div>
+             <div className="absolute -top-2 -right-2 bg-yellow-400 rounded-full p-1 border-2 border-white shadow-sm">
+                <CheckCircleIcon className="w-6 h-6 text-white" />
+             </div>
           )}
         </div>
-        <p className={`mt-2 font-bold ${isUnlocked ? 'text-gray-700' : 'text-gray-500'}`}>{lesson.judul_topik}</p>
-        <div className="flex items-center text-yellow-500 font-semibold">
-           <StarIcon className="w-4 h-4 mr-1"/>
-           <span>{lesson.xp_reward} XP</span>
+        
+        <div className="mt-3 bg-white/90 backdrop-blur px-3 py-1 rounded-xl shadow-sm border border-gray-100">
+           <p className={`font-bold text-sm ${isUnlocked ? 'text-gray-800' : 'text-gray-400'}`}>{lesson.judul_topik}</p>
         </div>
+        
+        {isUnlocked && (
+           <div className="mt-1 flex items-center bg-yellow-100 px-2 py-0.5 rounded-full text-yellow-700 text-xs font-bold border border-yellow-200">
+              <StarIcon className="w-3 h-3 mr-1"/>
+              <span>{lesson.xp_reward} XP</span>
+           </div>
+        )}
     </div>
   );
 
   if (!isUnlocked) {
-    return <div className="cursor-not-allowed">{content}</div>;
+    return <div className="cursor-not-allowed opacity-80 grayscale">{content}</div>;
   }
 
   return (
-    <Link to={`/lesson/${lesson.id}`} className="transition-transform transform hover:scale-110">
+    <Link to={`/lesson/${lesson.id}`} className="hover:scale-105 transition-transform">
       {content}
     </Link>
   );
@@ -76,6 +92,51 @@ const DashboardPage: React.FC = () => {
     fetchData();
   }, [learning_language, user]);
 
+  // Generate SVG Path dynamically based on number of topics
+  const pathD = useMemo(() => {
+    if (topics.length === 0) return "";
+    
+    // Kita menggunakan koordinat SVG tetap: Lebar 200 unit.
+    // Center = 100, Kiri = 50, Kanan = 150.
+    
+    // Tentukan titik awal (Topik pertama selalu di tengah/100)
+    let currentX = 100;
+    let currentY = NODE_OFFSET_TOP; // Titik tengah lingkaran pertama
+
+    let path = `M ${currentX} ${currentY} `;
+
+    topics.forEach((_, i) => {
+        if (i === topics.length - 1) return; // Stop drawing after reaching last node
+
+        const nextIndex = i + 1;
+        
+        // Tentukan posisi X target berikutnya (Sesuai logika CSS Zig-zag)
+        const cycle = nextIndex % 4;
+        let nextX = 100;
+        if (cycle === 1) nextX = 50;  // 25% dari 200 (Matches left: 25%)
+        if (cycle === 3) nextX = 150; // 75% dari 200 (Matches left: 75%)
+        
+        // Tentukan posisi Y target berikutnya
+        const nextY = (nextIndex * VERTICAL_SPACING) + NODE_OFFSET_TOP;
+
+        // Bezier curve control points
+        // Control point 1: Turun ke bawah dari titik sekarang
+        const c1x = currentX;
+        const c1y = currentY + (VERTICAL_SPACING / 2);
+
+        // Control point 2: Naik ke atas dari titik target
+        const c2x = nextX;
+        const c2y = nextY - (VERTICAL_SPACING / 2);
+
+        path += `C ${c1x} ${c1y}, ${c2x} ${c2y}, ${nextX} ${nextY} `;
+        
+        currentX = nextX;
+        currentY = nextY;
+    });
+
+    return path;
+  }, [topics]);
+
   if (isLoading) return <div className="p-8 text-center">Memuat Pengguna...</div>;
   if (!user) return <Navigate to="/auth" />;
   if (!learning_language) {
@@ -85,24 +146,70 @@ const DashboardPage: React.FC = () => {
   if (loadingData) return <div className="p-8 text-center">Menyiapkan kurikulum...</div>;
 
   const completedLessonIds = progress.map(p => p.topik_id);
+  const containerHeight = (topics.length * VERTICAL_SPACING) + 100; 
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-extrabold text-gray-800 mb-2">Jalur Belajar Anda</h1>
-      <p className="text-gray-600 mb-8">Selesaikan semua topik untuk menjadi master!</p>
+    <div className="container mx-auto px-4 py-8 min-h-screen bg-green-50">
+      <div className="text-center mb-8">
+        <h1 className="text-3xl font-extrabold text-gray-800 mb-2">Jalur Belajar</h1>
+        <p className="text-gray-600 bg-white inline-block px-4 py-1 rounded-full text-sm font-semibold shadow-sm border border-gray-200">
+           {user.learning_language === 'ENGLISH' ? '🇬🇧 Bahasa Inggris' : '🇨🇳 Bahasa Mandarin'}
+        </p>
+      </div>
 
-      <div className="relative w-full max-w-lg mx-auto h-[40rem]">
-        {/* The path line */}
-        <svg className="absolute w-full h-full" viewBox="0 0 200 200" preserveAspectRatio="none">
-          <path d="M 100 0 C 50 50, 150 50, 100 100 C 50 150, 150 150, 100 200" stroke="#d1d5db" strokeWidth="2" fill="none" strokeDasharray="5,5"/>
+      {/* Container utama untuk Path dan Node */}
+      <div className="relative w-full max-w-md mx-auto" style={{ height: `${containerHeight}px` }}>
+        
+        {/* SVG Layer: Z-index 0 agar di belakang tombol */}
+        {/* 
+            CRITICAL FIX: preserveAspectRatio="none"
+            Ini memaksa SVG untuk meregang (stretch) sepenuhnya mengikuti lebar dan tinggi container.
+            Ini memastikan bahwa koordinat X=50 di SVG selalu sejajar dengan elemen CSS left:25%,
+            tidak peduli berapa lebar layarnya.
+        */}
+        <svg 
+            className="absolute top-0 left-0 w-full h-full z-0 overflow-visible"
+            viewBox={`0 0 200 ${containerHeight}`} 
+            preserveAspectRatio="none" 
+        >
+          {/* Garis Abu-abu (Jalur Background) */}
+          <path 
+            d={pathD} 
+            stroke="#e5e7eb" 
+            strokeWidth="12" 
+            fill="none" 
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {/* Garis Kuning Putus-putus (Indikator arah) */}
+           <path 
+            d={pathD} 
+            stroke="#fbbf24" 
+            strokeWidth="0" 
+            fill="none" 
+            strokeLinecap="round"
+            strokeDasharray="10 10"
+          />
         </svg>
 
+        {/* Nodes Layer */}
         {topics.map((lesson, index) => {
           const isCompleted = completedLessonIds.includes(lesson.id);
           const isUnlocked = index === 0 || completedLessonIds.includes(topics[index-1]?.id);
-          return <LessonNode key={lesson.id} lesson={lesson} isCompleted={isCompleted} isUnlocked={isUnlocked} index={index}/>;
+          return (
+            <LessonNode 
+                key={lesson.id} 
+                lesson={lesson} 
+                isCompleted={isCompleted} 
+                isUnlocked={isUnlocked} 
+                index={index} 
+                total={topics.length}
+            />
+          );
         })}
       </div>
+      
+      <div className="h-24"></div> {/* Bottom spacer */}
     </div>
   );
 };

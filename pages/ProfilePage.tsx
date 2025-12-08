@@ -66,13 +66,13 @@ const ProfilePage: React.FC = () => {
             <div className="bg-white p-6 rounded-2xl shadow-sm border">
                 <h2 className="text-xl font-bold text-gray-700 mb-4">Pengaturan Kursus</h2>
                  <div className="space-y-4">
-                    <p className="font-semibold">Kursus Aktif:</p>
+                    <p className="font-semibold text-gray-700">Kursus Aktif:</p>
                     <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <span className="text-lg font-bold">{flag} {languageName}</span>
+                        <span className="text-lg font-bold text-gray-800">{flag} {languageName}</span>
                          <Link to="/select-language" className="text-blue-600 hover:underline font-semibold">Ganti</Link>
                     </div>
                     
-                    <p className="font-semibold pt-4">Pengaturan Akun:</p>
+                    <p className="font-semibold pt-4 text-gray-700">Pengaturan Akun:</p>
                     <button
                         onClick={handleReset}
                         className="w-full text-left px-4 py-3 bg-red-50 text-red-700 font-bold rounded-lg hover:bg-red-100 transition-colors"

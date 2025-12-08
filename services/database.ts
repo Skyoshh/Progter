@@ -224,15 +224,28 @@ export const databaseService = {
         .eq('topik_id', topicId)
         .single();
 
+    const timestamp = new Date().toISOString();
+
     if (!existing) {
+        // Insert baru jika belum ada
         const newProgress = {
             pengguna_id: userId,
             topik_id: topicId,
             status: 'completed',
             score: score,
-            tanggal_selesai: new Date().toISOString()
+            tanggal_selesai: timestamp
         };
         await supabase.from('progres_pengguna').insert([newProgress]);
+    } else {
+        // Update jika sudah ada (misal mengulang latihan untuk perbaikan skor)
+        // Kita update skor dan tanggal selesai
+        await supabase
+            .from('progres_pengguna')
+            .update({ 
+                score: score, 
+                tanggal_selesai: timestamp 
+            })
+            .eq('id', existing.id);
     }
   }
 };
